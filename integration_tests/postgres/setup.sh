@@ -10,18 +10,20 @@ function doSetup() {
   TYPE=$2
   CONTAINER_NAME="zgrab_postgres_${VERSION}-${TYPE}"
   IMAGE_TAG="zgrab_postgres:${VERSION}-${TYPE}"
-  if docker ps --filter "name=$CONTAINER_NAME" | grep -q $CONTAINER_NAME; then
-    echo "postgres/setup: Container $CONTAINER_NAME already running -- nothing to do."
-    return
-  fi
-  if grep -q "$IMAGE_TAG" < images.tmp > /dev/null && [ -x $REBUILD ]; then
+  if grep "$IMAGE_TAG" < images.tmp > /dev/null && [ -x $REBUILD ]; then
     echo "postgres/setup: docker image $IMAGE_TAG already exists -- skipping."
   else
     echo "postgres/setup: docker image $IMAGE_TAG does not exist -- creating..."
     ./build.sh $TYPE $VERSION
   fi
-  echo "postgres/setup: Starting container $CONTAINER_NAME..."
-  docker run -td --rm --name $CONTAINER_NAME -e POSTGRES_PASSWORD=password $IMAGE_TAG
+  if docker ps --filter "name=$CONTAINER_NAME" | grep $CONTAINER_NAME; then
+    echo "postgres/setup: Container $CONTAINER_NAME already running -- stopping..."
+    docker stop $CONTAINER_NAME
+    sleep 2
+    echo "...stopped."
+  fi
+  echo "postgres/setup: Starting container $CONTAINER_NAME on port local port $PORT..."
+  docker run -itd --rm --name $CONTAINER_NAME -e POSTGRES_PASSWORD=password $IMAGE_TAG
   echo "...started."
 }
 
@@ -31,21 +33,10 @@ function waitFor() {
   PORT=$3
   CONTAINER_NAME="zgrab_postgres_${VERSION}-${TYPE}"
   echo "postgres/setup: Waiting for postgres process to come up on $CONTAINER_NAME..."
-  if [ "10.1" == "$VERSION" ]; then
-    while ! (docker logs --tail all $CONTAINER_NAME | grep -q " listening on IPv4 address"); do
-      echo -n "."
-      sleep 1
-    done
-  else
-    while ! (docker exec $CONTAINER_NAME ps -Af | grep -q "postgres: logger process" > /dev/null); do
-      echo -n "*"
-      sleep 1
-    done
-    while ! (docker exec -t $CONTAINER_NAME cat //var/lib/postgresql/data/pg_log/postgres.log | grep -q "STARTED; state"); do
-      echo -n "."
-      sleep 1
-    done
-  fi
+  while ! (docker exec $CONTAINER_NAME ps -Af | grep "postgres: logger process" > /dev/null); do
+    echo -n "*"
+    sleep 1
+  done
   echo "...postgres is up."
 }
 
