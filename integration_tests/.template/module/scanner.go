@@ -15,7 +15,7 @@ type ScanResults struct {
 	// TLSLog      *zgrab2.TLSLog `json:"tls,omitempty"`
 }
 
-// Flags holds the command-line configuration for the #{MODULE_NAME} scan module.
+// Flags holds the command-line configuration for the HTTP scan module.
 // Populated by the framework.
 type Flags struct {
 	zgrab2.BaseFlags
@@ -36,7 +36,7 @@ type Scanner struct {
 	// TODO: Add scan state
 }
 
-// RegisterModule registers the zgrab2 module.
+// RegisterModule() registers the zgrab2 module.
 func RegisterModule() {
 	var module Module
 	// FIXME: Set default port
@@ -95,7 +95,7 @@ func (scanner *Scanner) GetPort() uint {
 	return scanner.config.Port
 }
 
-// Scan TODO: describe what is scanned
+// Scan() TODO: describe what is scanned
 func (scanner *Scanner) Scan(t zgrab2.ScanTarget) (status zgrab2.ScanStatus, result interface{}, thrown error) {
 	// TODO: implement
 	return zgrab2.SCAN_UNKNOWN_ERROR, nil, nil
