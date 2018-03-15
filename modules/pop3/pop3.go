@@ -1,4 +1,4 @@
-package smtp
+package pop3
 
 import (
 	"net"
@@ -8,8 +8,7 @@ import (
 )
 
 // This is the regex used in zgrab.
-// Corner cases like "200 OK\r\nthis is not valid at all\x00\x01\x02\x03\r\n" will be matched.
-var smtpEndRegex = regexp.MustCompile(`(?:^\d\d\d\s.*\r\n$)|(?:^\d\d\d-[\s\S]*\r\n\d\d\d\s.*\r\n$)`)
+var pop3EndRegex = regexp.MustCompile(`(?:\r\n\.\r\n$)|(?:\r\n$)`)
 
 const readBufferSize int = 0x10000
 
@@ -18,11 +17,11 @@ type Connection struct {
 	Conn net.Conn
 }
 
-// ReadResponse reads from the connection until it matches the smtpEndRegex. Copied from the original zgrab.
-// TODO: Catch corner cases, parse out response code.
+// ReadResponse reads from the connection until it matches the pop3EndRegex. Copied from the original zgrab.
+// TODO: Catch corner cases, parse out success/error character.
 func (conn *Connection) ReadResponse() (string, error) {
 	ret := make([]byte, readBufferSize)
-	n, err := zgrab2.ReadUntilRegex(conn.Conn, ret, smtpEndRegex)
+	n, err := zgrab2.ReadUntilRegex(conn.Conn, ret, pop3EndRegex)
 	if err != nil {
 		return "", nil
 	}

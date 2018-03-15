@@ -1,5 +1,5 @@
-# zschema sub-schema for zgrab2's smtp module
-# Registers zgrab2-smtp globally, and smtp with the main zgrab2 schema.
+# zschema sub-schema for zgrab2's pop3 module
+# Registers zgrab2-pop3 globally, and pop3 with the main zgrab2 schema.
 from zschema.leaves import *
 from zschema.compounds import *
 import zschema.registry
@@ -7,11 +7,10 @@ import zschema.registry
 import schemas.zcrypto as zcrypto
 import schemas.zgrab2 as zgrab2
 
-smtp_scan_response = SubRecord({
+pop3_scan_response = SubRecord({
     "result": SubRecord({
         "banner": String(),
-        "ehlo": String(),
-        "helo": String(),
+        "noop": String(),
         "help": String(),
         "starttls": String(),
         "quit": String(),
@@ -19,6 +18,6 @@ smtp_scan_response = SubRecord({
     })
 }, extends=zgrab2.base_scan_response)
 
-zschema.registry.register_schema("zgrab2-smtp", smtp_scan_response)
+zschema.registry.register_schema("zgrab2-pop3", pop3_scan_response)
 
-zgrab2.register_scan_response_type("smtp", smtp_scan_response)
+zgrab2.register_scan_response_type("pop3", pop3_scan_response)
