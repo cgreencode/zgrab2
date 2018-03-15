@@ -1,49 +1,46 @@
-// Package smtp provides a zgrab2 module that scans for SMTP mail
+// Package pop3 provides a zgrab2 module that scans for POP3 mail
 // servers.
-// Default Port: 25 (TCP)
+// Default Port: 110 (TCP)
 //
-// The --send-ehlo and --send-helo flags tell the scanner to first send
-// the EHLO/HELO command; if a --ehlo-domain or --helo-domain is present
-// that domain will be used, otherwise it is omitted.
-// The EHLO and HELO flags are mutually exclusive.
+// The --send-help and --send-noop flags tell the scanner to send a
+// HELP or NOOP command and read the response.
 //
-// The --send-help flag tells the scanner to send a HELP command.
-//
-// The --starttls flag tells the scanner to send the STARTTLS command,
+// The --pop3s flag tells the scanner to perform a TLS handshake
+// immediately after connecting, before even attempting to read
+// the banner.
+// The --starttls flag tells the scanner to send the STLS command,
 // and then negotiate a TLS connection.
 // The scanner uses the standard TLS flags for the handshake.
+// --pop3s and --starttls are mutually exclusive.
+// --pop3s does not change the default port number from 110, so
+// it should usually be coupled with e.g. --port 995.
 //
-// The --send-quit flag tells the scanner to send a QUIT command.
-// 
+// The --send-quit flag tells the scanner to send a QUIT command
+// before disconnecting.
+//
 // So, if no flags are specified, the scanner simply reads the banner
 // returned by the server and disconnects.
 //
 // The output contains the banner and the responses to any commands that
-// were sent, and if --starttls was sent, the standard TLS logs.
-package smtp
+// were sent, and if or --pop3s --starttls were set, the standard TLS logs.
+package pop3
 
 import (
-	"errors"
 	"fmt"
-	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/zmap/zgrab2"
+	"strings"
 )
 
-// ErrInvalidResponse is returned when the server returns an invalid or unexpected response.
-var ErrInvalidResponse = errors.New("invalid response")
 
 // ScanResults instances are returned by the module's Scan function.
 type ScanResults struct {
 	// Banner is the string sent by the server immediately after connecting.
 	Banner string `json:"banner,omitempty"`
 
-	// HELO is the server's response to the HELO command, if one is sent.
-	HELO string `json:"helo,omitempty"`
-
-	// EHLO is the server's response to the EHLO command, if one is sent.
-	EHLO string `json:"ehlo,omitempty"`
+	// NOOP is the server's response to the NOOP command, if one is sent.
+	NOOP string `json:"noop,omitempty"`
 
 	// HELP is the server's response to the HELP command, if it is sent.
 	HELP string `json:"help,omitempty"`
@@ -54,36 +51,30 @@ type ScanResults struct {
 	// QUIT is the server's response to the QUIT command, if it is sent.
 	QUIT string `json:"quit,omitempty"`
 
-	// TLSLog is the standard TLS log, if STARTTLS is sent.
+	// TLSLog is the standard TLS log, if --starttls or --pop3s is enabled.
 	TLSLog *zgrab2.TLSLog `json:"tls,omitempty"`
 }
 
-// Flags holds the command-line configuration for the HTTP scan module.
+// Flags holds the command-line configuration for the POP3 scan module.
 // Populated by the framework.
 type Flags struct {
 	zgrab2.BaseFlags
 	zgrab2.TLSFlags
 
-	// SendHELO indicates that the EHLO command should be set.
-	SendEHLO bool `long:"send-ehlo" description:"Send the EHLO command; use --ehlo-domain to set a domain."`
-
-	// SendEHLO indicates that the EHLO command should be set.
-	SendHELO bool `long:"send-helo" description:"Send the EHLO command; use --helo-domain to set a domain."`
-
-	// SendHELP indicates that the client should send the HELP command (after HELO/EHLO).
+	// SendHELP indicates that the client should send the HELP command.
 	SendHELP bool `long:"send-help" description:"Send the HELP command"`
 
-	// SendQUIT indicates that the QUIT command should be set.
+	// SendNOOP indicates that the NOOP command should be sent.
+	SendNOOP bool `long:"send-noop" description:"Send the NOOP command before closing."`
+
+	// SendQUIT indicates that the QUIT command should be sent.
 	SendQUIT bool `long:"send-quit" description:"Send the QUIT command before closing."`
 
-	// HELODomain is the domain the client should send in the HELO command.
-	HELODomain string `long:"helo-domain" description:"Set the domain to use with the HELO command. Implies --send-helo."`
-
-	// EHLODomain is the domain the client should send in the HELO command.
-	EHLODomain string `long:"ehlo-domain" description:"Set the domain to use with the EHLO command. Implies --send-ehlo."`
+	// POP3Secure indicates that the client should do a TLS handshake immediately after connecting.
+	POP3Secure bool `long:"pop3s" description:"Immediately negotiate a TLS connection"`
 
 	// StartTLS indicates that the client should attempt to update the connection to TLS.
-	StartTLS bool `long:"starttls" description:"Send STARTTLS before negotiating"`
+	StartTLS bool `long:"starttls" description:"Send STLS before negotiating"`
 
 	// Verbose indicates that there should be more verbose logging.
 	Verbose bool `long:"verbose" description:"More verbose logging, include debug fields in the scan results"`
@@ -101,7 +92,7 @@ type Scanner struct {
 // RegisterModule registers the zgrab2 module.
 func RegisterModule() {
 	var module Module
-	_, err := zgrab2.AddCommand("smtp", "smtp", "Probe for smtp", 25, &module)
+	_, err := zgrab2.AddCommand("pop3", "pop3", "Probe for pop3", 110, &module)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -121,14 +112,8 @@ func (module *Module) NewScanner() zgrab2.Scanner {
 // On success, returns nil.
 // On failure, returns an error instance describing the error.
 func (flags *Flags) Validate(args []string) error {
-	if flags.EHLODomain != "" {
-		flags.SendEHLO = true
-	}
-	if flags.HELODomain != "" {
-		flags.SendHELO = true
-	}
-	if flags.SendHELO && flags.SendEHLO {
-		log.Errorf("Cannot provide both EHLO and HELO")
+	if flags.StartTLS && flags.POP3Secure {
+		log.Error("Cannot send both --starttls and --pop3s")
 		return zgrab2.ErrInvalidArguments
 	}
 	return nil
@@ -158,7 +143,7 @@ func (scanner *Scanner) GetName() string {
 
 // Protocol returns the protocol identifier of the scan.
 func (scanner *Scanner) Protocol() string {
-	return "smtp"
+	return "pop3"
 }
 
 // GetPort returns the port being scanned.
@@ -166,62 +151,48 @@ func (scanner *Scanner) GetPort() uint {
 	return scanner.config.Port
 }
 
-func getSMTPCode(response string) (int, error) {
-	if len(response) < 5 {
-		return 0, ErrInvalidResponse
+func getPOP3Error(response string) error {
+	if !strings.HasPrefix(response, "-") {
+		return nil
 	}
-	ret, err := strconv.Atoi(response[0:3])
-	if err != nil {
-		return 0, ErrInvalidResponse
-	}
-	return ret, nil
+	return fmt.Errorf("POP3 error: %s", response[1:])
 }
 
-// Get a command with an optional argument (so if the argument is absent, there is no trailing space)
-func getCommand(cmd string, arg string) string {
-	if arg == "" {
-		return cmd
-	}
-	return cmd + " " + arg
-}
-
-// Scan performs the SMTP scan.
-// 1. Open a TCP connection to the target port (default 25).
-// 2. Read the banner.
-// 3. If --send-ehlo or --send-helo is sent, send the corresponding EHLO
-//    or HELO command.
+// Scan performs the POP3 scan.
+// 1. Open a TCP connection to the target port (default 110).
+// 2. If --pop3s is set, perform a TLS handshake using the command-line
+//    flags.
+// 3. Read the banner.
 // 4. If --send-help is sent, send HELP, read the result.
-// 5. If --starttls is sent, send STARTTLS, read the result, negotiate a
-//    TLS connection.
-// 6. If --send-quit is sent, send QUIT and read the result.
-// 7. Close the connection.
+// 5. If --send-noop is sent, send NOOP, read the result.
+// 6. If --starttls is sent, send STLS, read the result, negotiate a
+//    TLS connection using the command-line flags.
+// 7. If --send-quit is sent, send QUIT and read the result.
+// 8. Close the connection.
 func (scanner *Scanner) Scan(target zgrab2.ScanTarget) (zgrab2.ScanStatus, interface{}, error) {
 	c, err := target.Open(&scanner.config.BaseFlags)
 	if err != nil {
 		return zgrab2.TryGetScanStatus(err), nil, err
 	}
 	defer c.Close()
+	result := &ScanResults{}
+	if scanner.config.POP3Secure {
+		tlsConn, err := scanner.config.TLSFlags.GetTLSConnection(c)
+		if err != nil {
+			return zgrab2.TryGetScanStatus(err), nil, err
+		}
+		result.TLSLog = tlsConn.GetLog()
+		if err := tlsConn.Handshake(); err != nil {
+			return zgrab2.TryGetScanStatus(err), result, err
+		}
+		c = tlsConn
+	}
 	conn := Connection{Conn: c}
 	banner, err := conn.ReadResponse()
 	if err != nil {
 		return zgrab2.TryGetScanStatus(err), nil, err
 	}
-	result := &ScanResults{}
 	result.Banner = banner
-	if scanner.config.SendHELO {
-		ret, err := conn.SendCommand(getCommand("HELO", scanner.config.HELODomain))
-		if err != nil {
-			return zgrab2.TryGetScanStatus(err), result, err
-		}
-		result.HELO = ret
-	}
-	if scanner.config.SendEHLO {
-		ret, err := conn.SendCommand(getCommand("EHLO", scanner.config.EHLODomain))
-		if err != nil {
-			return zgrab2.TryGetScanStatus(err), result, err
-		}
-		result.EHLO = ret
-	}
 	if scanner.config.SendHELP {
 		ret, err := conn.SendCommand("HELP")
 		if err != nil {
@@ -229,18 +200,21 @@ func (scanner *Scanner) Scan(target zgrab2.ScanTarget) (zgrab2.ScanStatus, inter
 		}
 		result.HELP = ret
 	}
+	if scanner.config.SendNOOP {
+		ret, err := conn.SendCommand("NOOP")
+		if err != nil {
+			return zgrab2.TryGetScanStatus(err), result, err
+		}
+		result.NOOP = ret
+	}
 	if scanner.config.StartTLS {
-		ret, err := conn.SendCommand("STARTTLS")
+		ret, err := conn.SendCommand("STLS")
 		if err != nil {
 			return zgrab2.TryGetScanStatus(err), result, err
 		}
 		result.StartTLS = ret
-		code, err := getSMTPCode(ret)
-		if err != nil {
+		if err := getPOP3Error(ret); err != nil {
 			return zgrab2.TryGetScanStatus(err), result, err
-		}
-		if code < 200 || code >= 300 {
-			return zgrab2.SCAN_APPLICATION_ERROR, result, fmt.Errorf("SMTP error code %d returned from STARTTLS command (%s)", code, ret)
 		}
 		tlsConn, err := scanner.config.TLSFlags.GetTLSConnection(conn.Conn)
 		if err != nil {
