@@ -101,7 +101,6 @@ func (scanner *Scanner) Scan(target zgrab2.ScanTarget) (zgrab2.ScanStatus, inter
 	if err != nil {
 		return zgrab2.TryGetScanStatus(err), nil, err
 	}
-	defer conn.Close()
 	// TODO: implement
 	return zgrab2.SCAN_UNKNOWN_ERROR, nil, nil
 }
