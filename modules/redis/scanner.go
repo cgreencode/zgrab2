@@ -48,7 +48,6 @@ type scan struct {
 	result  *Result
 	target  *zgrab2.ScanTarget
 	conn    *Connection
-	close  func()
 }
 
 // Result is the struct that is returned by the scan.
@@ -142,11 +141,6 @@ func (scanner *Scanner) GetPort() uint {
 	return scanner.config.Port
 }
 
-// Close cleans up the scanner.
-func (scan *scan) Close() {
-	defer scan.close()
-}
-
 // SendCommand sends the given command/args to the server, using the scanner's
 // configuration, and drop the command/output into the result.
 func (scan *scan) SendCommand(cmd string, args ...string) (RedisValue, error) {
@@ -177,7 +171,6 @@ func (scanner *Scanner) StartScan(target *zgrab2.ScanTarget) (*scan, error) {
 			scanner: scanner,
 			conn:    conn,
 		},
-		close: func() { conn.Close() },
 	}, nil
 }
 
@@ -202,11 +195,6 @@ func forceToString(val RedisValue) string {
 	}
 }
 
-// Protocol returns the protocol identifer for the scanner.
-func (s *Scanner) Protocol() string {
-	return "redis"
-}
-
 // Scan executes the following commands:
 // 1. PING
 // 2. (only if --password is provided) AUTH <password>
@@ -221,7 +209,6 @@ func (scanner *Scanner) Scan(target zgrab2.ScanTarget) (zgrab2.ScanStatus, inter
 	if err != nil {
 		return zgrab2.TryGetScanStatus(err), nil, err
 	}
-	defer scan.Close()
 	result := scan.result
 	pingResponse, err := scan.SendCommand("PING")
 	if err != nil {

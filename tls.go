@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
@@ -48,7 +47,7 @@ type TLSFlags struct {
 	ServerName              string `long:"server-name" description:"Server name used for certificate verification and (optionally) SNI"`
 	VerifyServerCertificate bool   `long:"verify-server-certificate" description:"If set, the scan will fail if the server certificate does not match the server-name, or does not chain to a trusted root."`
 	// TODO: format? mapping? zgrab1 had flags like ChromeOnly, FirefoxOnly, etc...
-	CipherSuite      string `long:"cipher-suite" description:"A comma-delimited list of hex cipher suites to advertise."`
+	CipherSuite      string `long:"cipher-suite" description:"A list of cipher suites to use."`
 	MinVersion       int    `long:"min-version" description:"The minimum SSL/TLS version that is acceptable. 0 means that SSLv3 is the minimum."`
 	MaxVersion       int    `long:"max-version" description:"The maximum SSL/TLS version that is acceptable. 0 means use the highest supported value."`
 	CurvePreferences string `long:"curve-preferences" description:"A list of elliptic curves used in an ECDHE handshake, in order of preference."`
@@ -138,21 +137,9 @@ func (t *TLSFlags) GetTLSConfig() (*tls.Config, error) {
 	}
 
 	if t.CipherSuite != "" {
-		// allow either one of our standard values (e.g., chrome) or a comma-delimited list of ciphers
-		if _, ok := cipherMap[t.CipherSuite]; ok {
-			ret.CipherSuites = cipherMap[t.CipherSuite]
-		} else {
-			strCiphers := getCSV(t.CipherSuite)
-			var intCiphers = make([]uint16, len(strCiphers))
-			for i, s := range strCiphers {
-				s = strings.TrimPrefix(s, "0x")
-				v64, err := strconv.ParseUint(s, 16, 16)
-				if err != nil {
-					log.Fatalf("cipher suites: unable to convert %s to a 16bit integer: %s", s, err)
-				}
-				intCiphers[i] = uint16(v64)
-			}
-			ret.CipherSuites = intCiphers
+		ret.CipherSuites = cipherMap[t.CipherSuite]
+		if ret.CipherSuites == nil {
+			return nil, fmt.Errorf("%s is not a valid cipher suite", t.CipherSuite)
 		}
 	}
 
@@ -179,7 +166,7 @@ func (t *TLSFlags) GetTLSConfig() (*tls.Config, error) {
 		log.Fatalf("--signature-algorithms not implemented")
 	}
 
-	if t.HeartbeatEnabled || t.Heartbleed {
+	if t.HeartbeatEnabled {
 		ret.HeartbeatEnabled = true
 	} else {
 		ret.HeartbeatEnabled = false
@@ -263,9 +250,6 @@ func (z *TLSConnection) Handshake() error {
 		}()
 		// TODO - CheckHeartbleed does not bubble errors from Handshake
 		_, err := z.CheckHeartbleed(buf)
-		if err == tls.HeartbleedError {
-			err = nil
-		}
 		return err
 	} else {
 		defer func() {

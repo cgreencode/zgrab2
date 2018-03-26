@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	flags "github.com/zmap/zflags"
+	flags "github.com/ajholland/zflags"
 	log "github.com/sirupsen/logrus"
 	"github.com/zmap/zgrab2"
 	_ "github.com/zmap/zgrab2/modules"
