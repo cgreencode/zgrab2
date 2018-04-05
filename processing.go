@@ -11,7 +11,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zmap/zgrab2/lib/output"
 )
 
 // Grab contains all scan responses for a single host
@@ -104,16 +103,8 @@ func grabTarget(input ScanTarget, m *Monitor) []byte {
 		ipstr = s
 	}
 
-	raw := Grab{IP: ipstr, Domain: input.Domain, Data: moduleResult}
-
-	// TODO FIXME: Move verbosity to global level, or add a Verbosity() method to the Module interface.
-	stripped, err := output.Process(raw)
-	if err != nil {
-		log.Warnf("Error processing results: %v", err)
-		stripped = raw
-	}
-
-	result, err := json.Marshal(stripped)
+	a := Grab{IP: ipstr, Domain: input.Domain, Data: moduleResult}
+	result, err := json.Marshal(a)
 	if err != nil {
 		log.Fatalf("unable to marshal data: %s", err)
 	}
