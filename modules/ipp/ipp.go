@@ -3,114 +3,56 @@ package ipp
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
-	"math"
-	"strings"
-	"net/url"
-
-	log "github.com/sirupsen/logrus"
+	//"io"
+	"net"
 )
 
-// Writes an "attribute-with-one-value" with the provided "value-tag", "name", and "value" to provided buffer
+type Connection struct {
+	Conn net.Conn
+}
+
+//func ReadResponse(body *io.ReadCloser) *ScanResults {
+//	result := &ScanResults{}
+//
+//}
+
+// Returns a byte-encoded "attribute-with-one-value" with the provided "value-tag", "name", and "value"
 // attribute-with-one-value encoding described at https://tools.ietf.org/html/rfc8010#section-3.1.4
 // Example (runnable from ipp_test.go):
 //   Input: 0x47, "attributes-charset", "us-ascii"
 //   Output: [71 0 18 97 116 116 114 105 98 117 116 101 115 45 99 104 97 114 115 101 116 0 8 117 115 45 97 115 99 105 105]
-// TODO: Switch output and Example function to use hex.Dump()
-// TODO: Should return an error when fed an invalid valueTag
-func AttributeByteString(valueTag byte, name string, value string, target *bytes.Buffer) error {
+// TODO: Should return an error when fed an invalid valueTag?
+// TODO: Determine whether this should remain public. Currently is for Testable Example
+func AttributeByteString(valueTag byte, name string, value string) []byte {
 	//special byte denoting value syntax
-	binary.Write(target, binary.BigEndian, valueTag)
+	b := []byte{valueTag}
 
-	if len(name) <= math.MaxInt16 && len(name) >= 0  {
-		//append 16-bit signed int denoting name length
-		binary.Write(target, binary.BigEndian, int16(len(name)))
+	//append 16-bit signed int denoting name length
+	l := new(bytes.Buffer)
+	binary.Write(l, binary.BigEndian, int16(len(name)))
+	b = append(b, l.Bytes()...)
 
-		//append name
-		binary.Write(target, binary.BigEndian, []byte(name))
-	} else {
-		// TODO: Log error somewhere
-		return errors.New("Name wrong length to encode.")
-	}
+	//append name
+	b = append(b, []byte(name)...)
 
-	if len(value) <= math.MaxInt16 && len(value) >= 0 {
-		//append 16-bit signed int denoting value length
-		binary.Write(target, binary.BigEndian, int16(len(value)))
+	//append 16-bit signed int denoting value length
+	l = new(bytes.Buffer)
+	binary.Write(l, binary.BigEndian, int16(len(value)))
+	b = append(b, l.Bytes()...)
 
-		//append value
-		binary.Write(target, binary.BigEndian, []byte(value))
-	} else {
-		// TODO: Log error somewhere
-		return errors.New("Value wrong length to encode.")
-	}
-
-	return nil
+	//append value
+	b = append(b, []byte(value)...)
+	return b
 }
 
-// TODO: Eventually handle scheme-less urls, even though getHTTPURL will never construct one (we can use regex)
-// TODO: RFC claims that literal IP addresses are not valid IPP uri's, but Wireshark IPP Capture example uses them
-// (Source: https://wiki.wireshark.org/SampleCaptures?action=AttachFile&do=view&target=ipp.pcap)
-func ConvertURIToIPP(uriString string, tls bool) string {
-	uri, err := url.Parse(uriString)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"url": uriString,
-		}).Debug("Failed to parse URL from string")
-	}
-	// TODO: Create a better condition than uri.Scheme == "" b/c url.Parse doesn't know whether there's a scheme
-	if uri.Scheme == "" || uri.Scheme == "http" || uri.Scheme == "https" {
-		if tls {
-			uri.Scheme = "ipps"
-		} else {
-			uri.Scheme = "ipp"
-		}
-	}
-	if !strings.Contains(uri.Host, ":") {
-		uri.Host += ":631"
-	}
-	return uri.String()
-}
 
-func getPrintersRequest(major, minor int8) *bytes.Buffer {
-	var b bytes.Buffer
-	// Sending too new a version leads to a version-not-supported error, so we'll just send newest
-	//version
-	b.Write([]byte{byte(major), byte(minor)})
-	//operation-id = get-printer-attributes
-	b.Write([]byte{0x40, 2})
-	//request-id = 1
-	b.Write([]byte{0, 0, 0, 1})
-	//operation-attributes-tag = 1 (begins an attribute-group)
-	b.Write([]byte{1})
-
-	// TODO: Handle error ocurring in any AttributeByteString call
-	//attributes-charset
-	AttributeByteString(0x47, "attributes-charset", "utf-8", &b)
-	//attributes-natural-language
-	AttributeByteString(0x48, "attributes-natural-language", "en-us", &b)
-
-	//end-of-attributes-tag = 3
-	b.Write([]byte{3})
-
-	return &b
-}
-
-// TODO: Store everything except uri statically?
-// Construct a minimal request that an IPP server will respond to
 // IPP request encoding described at https://tools.ietf.org/html/rfc8010#section-3.1.1
-func getPrinterAttributesRequest(major, minor int8, uri string, tls bool) *bytes.Buffer {
+//TODO: Store everything except uri statically?
+//Construct a minimal request that an IPP server will respond to
+func getPrinterAttributesRequest(uri string) bytes.Buffer {
 	var b bytes.Buffer
-	// Using newest version number, because we must provide a supported major version number
-	// Object must reply to unsupported major version with
-	//     "'server-error-version-not-supported' along with the closest version number that
-	//     is supported" RFC 8011 4.1.8 https://tools.ietf.org/html/rfc8011#4.1.8
-	// "In all cases, the IPP object MUST return the "version-number" value that it supports
-	//     that is closest to the version number supplied by the Client in the request."
-	// CUPS behavior defies the RFC. The response to a request with a bad version number should encode
-	// the closest supported version number per RFC 8011 Section Appendix B.1.5.4 https://tools.ietf.org/html/rfc8011#appendix-B.1.5.4
-	//version
-	b.Write([]byte{byte(major), byte(minor)})
+	//version 2.1 (newest as of 2018)
+	b.Write([]byte{2, 1})
 	//operation-id = get-printer-attributes
 	b.Write([]byte{0, 0xb})
 	//request-id = 1
@@ -118,18 +60,17 @@ func getPrinterAttributesRequest(major, minor int8, uri string, tls bool) *bytes
 	//operation-attributes-tag = 1 (begins an attribute-group)
 	b.Write([]byte{1})
 
-	// TODO: Handle error ocurring in any AttributeByteString call
 	//attributes-charset
-	AttributeByteString(0x47, "attributes-charset", "utf-8", &b)
+	b.Write(AttributeByteString(0x47, "attributes-charset", "utf-8"))
 	//attributes-natural-language
-	AttributeByteString(0x48, "attributes-natural-language", "en-us", &b)
+	b.Write(AttributeByteString(0x48, "attributes-natural-language", "en-us"))
 	//printer-uri
-	AttributeByteString(0x45, "printer-uri", ConvertURIToIPP(uri, tls), &b)
+	b.Write(AttributeByteString(0x45, "printer-uri", uri))
 	//requested-attributes
-	AttributeByteString(0x44, "requested-attributes", "all", &b)
+	b.Write(AttributeByteString(0x44, "requested-attributes", "all"))
 
 	//end-of-attributes-tag = 3
 	b.Write([]byte{3})
 
-	return &b
+	return b
 }
