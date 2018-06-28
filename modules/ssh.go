@@ -73,10 +73,6 @@ func (s *SSHScanner) GetName() string {
 	return s.config.Name
 }
 
-func (s *SSHScanner) GetTrigger() string {
-	return s.config.Trigger
-}
-
 func (s *SSHScanner) Scan(t zgrab2.ScanTarget) (zgrab2.ScanStatus, interface{}, error) {
 	data := new(ssh.HandshakeLog)
 
