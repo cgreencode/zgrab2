@@ -14,9 +14,9 @@ import zgrab2
 # These are defined in detail at
 #   https://www.postgresql.org/docs/10/static/protocol-error-fields.html
 postgres_error = SubRecord({
-    "severity": WhitespaceAnalyzedString(),
+    "severity": WhitespaceAnalyzedString(required=True),
     "severity_v": WhitespaceAnalyzedString(),
-    "code": WhitespaceAnalyzedString(),
+    "code": WhitespaceAnalyzedString(required=True),
     "message": WhitespaceAnalyzedString(),
     "detail": WhitespaceAnalyzedString(),
     "hint": WhitespaceAnalyzedString(),
@@ -58,7 +58,7 @@ postgres_scan_response = SubRecord({
         "supported_versions": WhitespaceAnalyzedString(),
         "protocol_error": postgres_error,
         "startup_error": postgres_error,
-        "is_ssl": Boolean(),
+        "is_ssl": Boolean(required=True),
         "authentication_mode": postgres_auth_mode,
         # TODO FIXME: This is currendly an unconstrained map[string]string
         "server_parameters": WhitespaceAnalyzedString(),
