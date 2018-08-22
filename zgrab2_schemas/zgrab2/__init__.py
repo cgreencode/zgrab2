@@ -5,7 +5,6 @@ import fox
 import ftp
 import http
 import modbus
-import mongodb
 import mssql
 import mysql
 import mysql_errors
