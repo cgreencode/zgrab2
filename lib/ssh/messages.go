@@ -27,6 +27,7 @@ const (
 
 	// Standard authentication messages
 	msgUserAuthSuccess = 52
+	msgUserAuthBanner  = 53
 )
 
 // SSH messages:
@@ -170,15 +171,6 @@ const msgUserAuthFailure = 51
 type userAuthFailureMsg struct {
 	Methods        []string `sshtype:"51"`
 	PartialSuccess bool
-}
-
-// See RFC 4252, section 5.4
-const msgUserAuthBanner = 53
-
-type userAuthBannerMsg struct {
-	Message string `sshtype:"53"`
-	// unused, but required to allow message parsing
-	Language string
 }
 
 // See RFC 4256, section 3.2
